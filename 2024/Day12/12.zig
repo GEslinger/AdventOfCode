@@ -1,5 +1,7 @@
 const std = @import("std");
-const print = std.debug.print;
+//const print = std.debug.print;
+fn print(_: []const u8, _: anytype) void {}
+const outprint = std.debug.print;
 
 pub fn main() !void {
     print("Hello, world!\n", .{});
@@ -12,7 +14,7 @@ pub fn main() !void {
     defer arena.deinit();
     var alloc = arena.allocator();
 
-    const file = try std.fs.cwd().openFile("mini", .{});
+    const file = try std.fs.cwd().openFile("input", .{});
     defer file.close();
     const contents = try file.readToEndAlloc(alloc, 1_000_000);
     defer alloc.free(contents);
@@ -26,6 +28,7 @@ pub fn main() !void {
     var row: usize = 0;
     var col: usize = 0;
     for (contents) |char| {
+        if (char == '\r') continue;
         if (char == '\n') {
             row += 1;
             col = 0;
@@ -33,65 +36,74 @@ pub fn main() !void {
         }
 
         //const a = regions.Node{.data = Region, .next};
-        print("Checking {c} at {}, {}\n", .{ char, row, col });
 
         var new_region = try alloc.create(Region);
         new_region.* = Region.init(char, &alloc);
         try new_region.points.put([2]usize{ row, col }, {});
         if (regions.items.len == 0) {
             try regions.append(new_region);
+            col += 1;
             continue;
         } else {
             try regions.append(new_region);
         }
 
+        print("Checking {c} at {}, {}\n", .{ char, row, col });
+
         var not_connected = true;
-        var remove_idx = std.ArrayList(usize).init(alloc); //FIXME: Should be a hashmap!!!
+        var remove_idx = std.AutoHashMap(usize, void).init(alloc);
         defer remove_idx.deinit();
         //var number_merged: u3 = 0;
 
-        for (regions.items[0 .. regions.items.len - 2], 0..) |region, idx| {
+        for (regions.items[0 .. regions.items.len - 1], 0..) |region, idx| {
+            if (!region.active) continue;
             if (region.letter != char) continue;
             print("VS region idx {}, A:{}, P:{}\n", .{ idx, region.area, region.perimeter });
+            var merged_already = false;
+
+            if (col > 0) {
+                if (region.points.getEntry([2]usize{ row, col - 1 })) |_| {
+                    not_connected = false;
+                    merged_already = true;
+                    print("Connecting left!\n", .{});
+
+                    const merge_result = try new_region.merge(region);
+                    print("Confirm I'm A:{} P:{}\n", .{ new_region.area, new_region.perimeter });
+                    if (merge_result.@"1") _ = try remove_idx.getOrPut(idx);
+                }
+            }
 
             if (row > 0) {
                 if (region.points.getEntry([2]usize{ row - 1, col })) |_| {
                     not_connected = false;
                     print("Connecting up!\n", .{});
+                    if (merged_already) {
+                        new_region.perimeter -= 2;
+                    } else {
+                        const merge_result = try new_region.merge(region);
+                        if (merge_result.@"1") _ = try remove_idx.getOrPut(idx);
+                    }
 
-                    const merge_result = try new_region.merge(region);
                     print("Confirm I'm A:{} P:{}\n", .{ new_region.area, new_region.perimeter });
-                    if (merge_result.@"1") try remove_idx.append(idx);
-                    continue;
-                }
-            }
-
-            if (col > 0) {
-                if (region.points.getEntry([2]usize{ row, col - 1 })) |_| {
-                    not_connected = false;
-                    print("Connecting left!\n", .{});
-
-                    const merge_result = try new_region.merge(region);
-                    print("Confirm I'm A:{} P:{}\n", .{ new_region.area, new_region.perimeter });
-                    if (merge_result.@"1") try remove_idx.append(idx);
-                    continue;
                 }
             }
 
             //if (number_merged == 1) remove_idx = idx;
         }
 
-        std.debug.assert(remove_idx.items.len <= 2);
+        std.debug.assert(remove_idx.count() <= 2);
 
-        for (remove_idx.items) |idx| {
-            print("And removing region idx {}!\n", .{idx});
-            print("BEFORE\n", .{});
-            for (regions.items, 0..) |region, id| print("{}: {c} {} {}\n", .{ id, region.letter, region.area, region.perimeter });
-            _ = regions.orderedRemove(idx);
-            print("AFTER\n", .{});
-            for (regions.items, 0..) |region, id| print("{}: {c} {} {}\n", .{ id, region.letter, region.area, region.perimeter });
-        }
-
+        //        var remove_iter = remove_idx.iterator();
+        //        while (remove_iter.next()) |entry| {
+        //            const idx = entry.key_ptr.*;
+        //            print("And removing region idx {}!\n", .{idx});
+        //            print("BEFORE\n", .{});
+        //            for (regions.items, 0..) |region, id| print("{}: {c} {} {}\n", .{ id, region.letter, region.area, region.perimeter });
+        //            _ = regions.orderedRemove(idx);
+        //            print("AFTER\n", .{});
+        //            for (regions.items, 0..) |region, id| print("{}: {c} {} {}\n", .{ id, region.letter, region.area, region.perimeter });
+        //        }
+        //
         if (not_connected) {
             print("New region\n", .{});
             //try regions.append(new_region);
@@ -102,6 +114,7 @@ pub fn main() !void {
 
     var total_price: u64 = 0;
     for (regions.items) |region| {
+        if (!region.active) continue;
         print("Region of {c}, area {}, perimeter {}\n", .{ region.letter, region.area, region.perimeter });
         total_price += region.area * region.perimeter;
 
@@ -109,14 +122,16 @@ pub fn main() !void {
         alloc.destroy(region);
     }
 
-    print("Total price: {}\n", .{total_price});
+    outprint("Total price: {}\n", .{total_price});
 }
 
 const Region = struct {
     const Self = @This();
 
+    active: bool = true,
     area: u64 = 1,
     perimeter: u64 = 4,
+    sides: u64 = 4,
     letter: u8,
     points: std.AutoHashMap([2]usize, void),
     alloc: *std.mem.Allocator,
@@ -156,6 +171,7 @@ const Region = struct {
 
         //other.points.deinit();
         //other.alloc.destroy(other);
+        other.active = false;
 
         return .{ self, true };
     }
