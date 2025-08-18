@@ -52,16 +52,14 @@ pub fn main() !void {
         print("Checking {c} at {}, {}\n", .{ char, row, col });
 
         var not_connected = true;
-        var l: usize = 0;
-        var u: usize = 0;
-        var same_l_u = false;
-        var d1: u1 = 0;
-        var d2: u1 = 0;
+        var remove_idx = std.AutoHashMap(usize, void).init(alloc);
+        defer remove_idx.deinit();
+        //var number_merged: u3 = 0;
 
-        for (regions.items[0 .. regions.items.len - 1]) |region| {
+        for (regions.items[0 .. regions.items.len - 1], 0..) |region, idx| {
             if (!region.active) continue;
             if (region.letter != char) continue;
-            print("VS region A:{}, S:{}\n", .{ region.area, region.sides });
+            print("VS region idx {}, A:{}, P:{}\n", .{ idx, region.area, region.perimeter });
             var merged_already = false;
 
             if (col > 0) {
@@ -70,62 +68,46 @@ pub fn main() !void {
                     merged_already = true;
                     print("Connecting left!\n", .{});
 
-                    l = region.sides;
-                    try new_region.merge(region);
-                    //print("Confirm I'm A:{} P:{}\n", .{ new_region.area, new_region.perimeter });
+                    const merge_result = try new_region.merge(region);
+                    print("Confirm I'm A:{} P:{}\n", .{ new_region.area, new_region.perimeter });
+                    if (merge_result.@"1") _ = try remove_idx.getOrPut(idx);
                 }
             }
 
             if (row > 0) {
-                d2 |= if (region.points.get([2]usize{ row - 1, col + 1 })) |_| 1 else 0;
-
                 if (region.points.getEntry([2]usize{ row - 1, col })) |_| {
                     not_connected = false;
-                    u = region.sides;
                     print("Connecting up!\n", .{});
                     if (merged_already) {
                         new_region.perimeter -= 2;
-                        same_l_u = true;
                     } else {
-                        try new_region.merge(region);
+                        const merge_result = try new_region.merge(region);
+                        if (merge_result.@"1") _ = try remove_idx.getOrPut(idx);
                     }
 
-                    //print("Confirm I'm A:{} P:{}\n", .{ new_region.area, new_region.perimeter });
+                    print("Confirm I'm A:{} P:{}\n", .{ new_region.area, new_region.perimeter });
                 }
             }
 
-            if (row > 0 and col > 0) {
-                d1 |= if (region.points.get([2]usize{ row - 1, col - 1 })) |_| 1 else 0;
-            }
+            //if (number_merged == 1) remove_idx = idx;
         }
 
-        if (d1 == 1) print("D1\n", .{});
-        if (d2 == 1) print("D2\n", .{});
-        print("l:{} u:{}\n", .{ l, u });
+        std.debug.assert(remove_idx.count() <= 2);
 
-        if (l == 0 and u > 0 and d1 == 1 and d2 == 1) {
-            new_region.sides += u;
-        } else if (l > 0 and u > 0) {
-            new_region.sides += u + l - 4;
-            if (d2 == 0) new_region.sides -= 2;
-        } else if (l > 0 and d1 == 1) {
-            new_region.sides += l - 2;
-        } else if (u > 0 and (d2 == 1 or d1 == 1)) {
-            new_region.sides += u - 2;
-            print("lolol\n", .{});
-        } else if (l > 0 and u == 0) {
-            new_region.sides = l;
-        } else if (u > 0 and l == 0) {
-            new_region.sides = u;
-        }
-
-        if (same_l_u) {
-            new_region.sides -= u;
-        }
-
-        print("Total region sides: {}\n", .{new_region.sides});
+        //        var remove_iter = remove_idx.iterator();
+        //        while (remove_iter.next()) |entry| {
+        //            const idx = entry.key_ptr.*;
+        //            print("And removing region idx {}!\n", .{idx});
+        //            print("BEFORE\n", .{});
+        //            for (regions.items, 0..) |region, id| print("{}: {c} {} {}\n", .{ id, region.letter, region.area, region.perimeter });
+        //            _ = regions.orderedRemove(idx);
+        //            print("AFTER\n", .{});
+        //            for (regions.items, 0..) |region, id| print("{}: {c} {} {}\n", .{ id, region.letter, region.area, region.perimeter });
+        //        }
+        //
         if (not_connected) {
             print("New region\n", .{});
+            //try regions.append(new_region);
         }
 
         col += 1;
@@ -134,8 +116,8 @@ pub fn main() !void {
     var total_price: u64 = 0;
     for (regions.items) |region| {
         if (!region.active) continue;
-        print("Region of {c}, area {}, sides {}\n", .{ region.letter, region.area, region.sides });
-        total_price += region.area * region.sides;
+        print("Region of {c}, area {}, perimeter {}\n", .{ region.letter, region.area, region.perimeter });
+        total_price += region.area * region.perimeter;
 
         region.deinit();
         alloc.destroy(region);
@@ -167,14 +149,15 @@ const Region = struct {
         self.points.deinit();
     }
 
-    fn merge(self: *Self, other: *Self) !void {
+    /// Owns destruction of "other"
+    fn merge(self: *Self, other: *Self) !struct { *Self, bool } {
         if (self.area + other.area > 10000) return MergeError.CrapTooBig;
 
         if (self == other) {
             // Delete virtual edges
             print("literally me!!! :3\n", .{});
             self.perimeter -= 2;
-            return;
+            return .{ self, false };
         }
 
         var other_point_iter = other.points.iterator();
@@ -185,11 +168,13 @@ const Region = struct {
         self.area += other.area;
         self.perimeter += other.perimeter - 2;
 
-        //print("now I'm A:{} P:{}\n", .{ self.area, self.perimeter });
+        print("now I'm A:{} P:{}\n", .{ self.area, self.perimeter });
 
         //other.points.deinit();
         //other.alloc.destroy(other);
         other.active = false;
+
+        return .{ self, true };
     }
 };
 
