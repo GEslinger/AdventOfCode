@@ -60,7 +60,7 @@ pub fn main() !void {
 
     var total: u64 = 0;
     for (starts.items) |start| {
-        print("Startin at row {} column {}...", .{ start[0], start[1] });
+        //print("Startin at row {} column {}...", .{ start[0], start[1] });
         try points.append(start);
         while (points.items.len > 0) {
             inline for (@typeInfo(Dir).@"enum".fields) |dir| {
@@ -70,7 +70,7 @@ pub fn main() !void {
             _ = points.orderedRemove(0);
         }
 
-        print("Score: {}\n", .{ends.count()});
+        //print("Score: {}\n", .{ends.count()});
         total += ends.count();
         ends.clearRetainingCapacity();
         points.clearRetainingCapacity();
@@ -83,8 +83,8 @@ pub fn main() !void {
 fn takeNextStep(point: [2]u64, dir: Dir, map: [][]u64, ends: *std.AutoHashMap([2]u64, void), points: *std.ArrayList([2]u64)) !bool {
     const point_val = map[point[0]][point[1]];
     if (point_val == 9) {
-        print("{any}\n", .{points.items});
-        print("Now found a 9!!! at r{} c{}\n", .{ point[0], point[1] });
+        //print("{any}\n", .{points.items});
+        //print("Now found a 9!!! at r{} c{}\n", .{ point[0], point[1] });
         _ = try ends.getOrPut(point);
         routes += 1;
         return true;
@@ -106,7 +106,7 @@ fn takeNextStep(point: [2]u64, dir: Dir, map: [][]u64, ends: *std.AutoHashMap([2
     };
 
     if (map[next_point[0]][next_point[1]] == point_val + 1) {
-        print("Value {} at r{} c{}, going {s}\n", .{ point_val, point[0], point[1], @tagName(dir) });
+        //print("Value {} at r{} c{}, going {s}\n", .{ point_val, point[0], point[1], @tagName(dir) });
         try points.append(next_point);
     }
 

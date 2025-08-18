@@ -43,6 +43,7 @@ pub fn main() !void {
         if (regions.items.len == 0) {
             try regions.append(new_region);
             col += 1;
+
             continue;
         } else {
             try regions.append(new_region);
