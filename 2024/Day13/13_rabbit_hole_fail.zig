@@ -15,7 +15,7 @@ pub fn main() !void {
     defer prizes.deinit();
 
     {
-        var file = try std.fs.cwd().openFile("input", .{});
+        var file = try std.fs.cwd().openFile("mini", .{});
         defer file.close();
 
         const contents = try file.readToEndAlloc(alloc, 1_000_000);
@@ -45,20 +45,41 @@ pub fn main() !void {
 
     var total: StorageType = 0;
     //for (a_btns.items) |btn| print("{}, {}\n", .{ btn[0], btn[1] });
-    for (a_btns.items, b_btns.items, prizes.items) |a, b, p_orig| {
-        //const p = p_orig;
-        const p = [2]StorageType{ p_orig[0] + 10000000000000, p_orig[1] + 10000000000000 };
+    for (a_btns.items, b_btns.items, prizes.items) |a_btn, b_btn, p_orig| {
+        const p = p_orig;
+        //const p = [2]StorageType{ p_orig[0] + 10000000000000, p_orig[1] + 10000000000000 };
         //print("A: {d}, {d}\tB: {d}, {d}\tP: {d}, {d}\n", .{ a[0], a[1], b[0], b[1], p[0], p[1] });
 
-        const det = a[0] * b[1] - b[0] * a[1];
+        const det = a_btn[0] * b_btn[1] - b_btn[0] * a_btn[1];
 
         if (@abs(det) < 0.0001) {
             print("SINGULAR!!!\n", .{});
             continue;
         }
 
-        const xd_0 = p[0] * b[1] - p[1] * b[0];
-        const xd_1 = -p[0] * a[1] + p[1] * a[0];
+        const xd_0 = p[0] * b_btn[1] - p[1] * b_btn[0];
+        const xd_1 = -p[0] * a_btn[1] + p[1] * a_btn[0];
+
+        //NOTE: Characteristic Equation to see if eigenvalues are rational?
+        const a = 1;
+        const b = (-a_btn[0] - b_btn[1]);
+        const c = a_btn[0] * b_btn[1] - a_btn[1] * b_btn[0];
+        const discriminant: StorageType = b * b - 4 * a * c;
+
+        print("Disc: {d}\n", .{discriminant});
+
+        if (discriminant < 0) continue;
+
+        const root: StorageType = @sqrt(discriminant);
+        print("Root: {d}\n", .{root});
+
+        const root1 = (-a_btn[0] - b_btn[0]) + root;
+        _ = root1;
+
+        if (root - @floor(root) > 0.001) {
+            print("NOT RATIONAL!\n", .{});
+            //continue;
+        }
 
         //const x_0 = @divTrunc(xd_0, det);
         //const x_1 = @divTrunc(xd_1, det);
@@ -67,11 +88,10 @@ pub fn main() !void {
 
         //if (x_0 > 100 or x_1 > 100) continue;
         if (x_0 < 0 or x_1 < 0) continue;
-        if (x_0 - std.math.floor(x_0) > 0.001 or x_1 - std.math.floor(x_1) > 0.001) {
-            //print("AAAAAAAAAAAAAAAAAAAAAAAAAAAA\n", .{});
-            //print("{} |||| {}\n", .{ x_0 - std.math.floor(x_0), x_1 - std.math.floor(x_1) });
-            continue;
-        }
+        //if (x_0 - std.math.floor(x_0) > 0.001 or x_1 - std.math.floor(x_0) > 0.001) {
+        //    print("AAAAAAAAAAAAAAAAAAAAAAAAAAAA\n", .{});
+        //    continue;
+        //}
 
         print("x_0:{d}, x_1:{d}\n", .{ x_0, x_1 });
         total += x_0 * 3 + x_1 * 1;
