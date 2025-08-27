@@ -37,24 +37,41 @@ pub fn main() !void {
 
     var output_array: std.ArrayList(u64) = .empty;
 
-    for (0..100_000_000) |try_a| {
+    var try_a: u64 = 0;
+    var inc: u64 = 1;
+    var jej: usize = 0;
+    var level_tries: u64 = 0;
+    var last_spot: u64 = 0;
+    while (jej < 1000) {
         a = try_a;
         b = b_orig;
         c = c_orig;
         try runProgram(program.items, &a, &b, &c, alloc, &output_array);
 
-        const partial_match: bool = for (output_array.items, 0..) |val, i| {
+        print("A: {}, Output: {any}\n", .{ try_a, output_array.items });
+        if (output_array.items.len == program.items.len) break;
+
+        const done_ok: bool = for (output_array.items, 0..) |out_val, i| {
             if (i >= program.items.len) break false;
-            if (val != program.items[i]) break false;
+            if (out_val != program.items[i]) break false;
         } else blk: {
             break :blk true;
         };
 
-        if (partial_match) {
-            print("A: {b}, aka {}, Output: {any}\n", .{ try_a, try_a, output_array.items });
+        if (done_ok) {
+            level_tries = 0;
+            last_spot = try_a;
+            inc <<= 1;
+        } else if (level_tries > 256) {
+            level_tries = 0;
+            inc >>= 1;
+            try_a = last_spot;
         }
 
+        try_a += inc;
+        level_tries += 1;
         output_array.clearRetainingCapacity();
+        jej += 1;
     }
 }
 

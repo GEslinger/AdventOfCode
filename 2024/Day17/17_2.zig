@@ -6,9 +6,9 @@ pub fn main() !void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    var a: u64 = undefined;
-    var b: u64 = undefined;
-    var c: u64 = undefined;
+    var a: u64 = 0;
+    var b: u64 = 0;
+    var c: u64 = 0;
 
     var program: std.ArrayList(u3) = .empty;
 
@@ -20,9 +20,9 @@ pub fn main() !void {
 
         var lines = std.mem.tokenizeAny(u8, contents, "\r\n");
 
-        a = try std.fmt.parseInt(u64, (lines.next().?)[12..], 10);
-        b = try std.fmt.parseInt(u64, (lines.next().?)[12..], 10);
-        c = try std.fmt.parseInt(u64, (lines.next().?)[12..], 10);
+        _ = try std.fmt.parseInt(u64, (lines.next().?)[12..], 10);
+        _ = try std.fmt.parseInt(u64, (lines.next().?)[12..], 10);
+        _ = try std.fmt.parseInt(u64, (lines.next().?)[12..], 10);
 
         var pgm_iter = std.mem.tokenizeAny(u8, lines.next().?[9..], ",");
         while (pgm_iter.next()) |pgm_value| try program.append(alloc, try std.fmt.parseInt(u3, pgm_value, 10));
@@ -32,29 +32,71 @@ pub fn main() !void {
     print("Program: {any}\n", .{program.items});
 
     a = 0;
-    const b_orig = b;
-    const c_orig = c;
+    _ = &c;
+    //const b_orig = b;
+    //const c_orig = c;
 
     var output_array: std.ArrayList(u64) = .empty;
 
-    for (0..100_000_000) |try_a| {
-        a = try_a;
-        b = b_orig;
-        c = c_orig;
-        try runProgram(program.items, &a, &b, &c, alloc, &output_array);
+    var i: usize = 0;
+    while (i < program.items.len) : (i += 1) {
+        b = program.items[program.items.len - i - 1];
+        print("Gotta find so that B == {}\n", .{b});
+        var b_after: u64 = 0;
+        //var c_after: u64 = 0;
 
-        const partial_match: bool = for (output_array.items, 0..) |val, i| {
-            if (i >= program.items.len) break false;
-            if (val != program.items[i]) break false;
-        } else blk: {
-            break :blk true;
-        };
+        b_c: while (b_after <= 99999) : (b_after += 1) {
+            print("Checking B = {}\n", .{b_after});
+            const c_temp = if (b_after <= std.math.maxInt(u6)) (a ^ 1 ^ b_after) >> @as(u6, @intCast(b_after)) else 0;
 
-        if (partial_match) {
-            print("A: {b}, aka {}, Output: {any}\n", .{ try_a, try_a, output_array.items });
+            //const final_cond = if (i == program.items.len - 1) (b_after ^ 1) == a % 8 else true;
+            if (i < program.items.len - 1) {
+                if ((b_after ^ 5 ^ c_temp) % 8 == b) break :b_c;
+            } else {
+                {
+                    var a_copy = a ^ b_after ^ 1;
+                    var b_copy: u64 = 0;
+                    var c_copy: u64 = 0;
+
+                    try runProgram(program.items, &a_copy, &b_copy, &c_copy, alloc, &output_array);
+                    print("Verification yields {any}\n", .{output_array.items});
+
+                    const found = for (output_array.items, 0..) |val, idx| {
+                        if (program.items[idx] != val) break false;
+                    } else blk: {
+                        break :blk true;
+                    };
+
+                    if (found) break :b_c;
+
+                    output_array.clearRetainingCapacity();
+                }
+            }
+        } else {
+            print("FAIL! :(\n", .{});
+            return;
         }
 
-        output_array.clearRetainingCapacity();
+        //print("Win!\n", .{});
+
+        b = b_after;
+
+        b ^= 1; // Step 2
+        a ^= b; // Step 1?
+        print("A = {}, aka 0b{b}\n", .{ a, a });
+
+        {
+            var a_copy = a;
+            var b_copy: u64 = 0;
+            var c_copy: u64 = 0;
+            output_array.clearRetainingCapacity();
+
+            try runProgram(program.items, &a_copy, &b_copy, &c_copy, alloc, &output_array);
+            print("Verification yields {any}\n", .{output_array.items});
+            output_array.clearRetainingCapacity();
+        }
+
+        a <<= 3; // Step 7
     }
 }
 
@@ -65,11 +107,11 @@ fn runProgram(pgm: []u3, a: *u64, b: *u64, c: *u64, alloc: ?std.mem.Allocator, o
 
     while (instr_ptr < pgm.len - 1) {
         const opts = [2]u3{ pgm[instr_ptr], pgm[instr_ptr + 1] };
-        //print("I_ptr: {}, Step begins A: {} B:{} C:{}, opts: {any}\n", .{ instr_ptr, a.*, b.*, c.*, opts });
+        print("I_ptr: {}, Step begins A: {} B:{} C:{}, opts: {any}\n", .{ instr_ptr, a.*, b.*, c.*, opts });
 
         const result = step(opts, a.*, b.*, c.*);
         a.*, b.*, c.* = .{ result.a, result.b, result.c };
-        //print("Step ends A: {} B:{} C:{}, out: {any}\n", .{ a.*, b.*, c.*, result.out });
+        print("Step ends A: {} B:{} C:{}, out: {any}\n", .{ a.*, b.*, c.*, result.out });
 
         if (result.out) |out| {
             //if (out_array.?.items.len >= pgm.len) return ProgramError.NotRight;

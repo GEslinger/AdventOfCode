@@ -1,0 +1,62 @@
+const std = @import("std");
+const print = std.debug.print;
+
+const corner = 6;
+
+pub fn main() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var blocked = std.AutoHashMap(@Vector(2, usize), void).init(alloc);
+    var path_tree: std.ArrayList(*PathNode) = .empty;
+
+    {
+        const file = try std.fs.cwd().openFile("mini", .{});
+        const contents = try file.readToEndAlloc(alloc, 1_000_000);
+        var coord_iter = std.mem.tokenizeAny(u8, contents, "\r\n,");
+        while (coord_iter.next()) |X| {
+            const Y = coord_iter.next().?;
+            _ = try blocked.put(@Vector(2, usize){ try std.fmt.parseInt(usize, X, 10), try std.fmt.parseInt(usize, Y, 10) }, {});
+        }
+    }
+
+    {
+        const start = try alloc.create(PathNode);
+        start.* = PathNode{ .pos = @Vector(2, usize){ 0, 0 } };
+        try path_tree.append(alloc, start);
+    }
+
+    var i: usize = 0;
+    while (i < path_tree.items.len) : (i += 1) {
+        const node = path_tree.items[i];
+
+        if (node.pos[0] > 0) _ = (try tryToGo(node, node.pos - @Vector(2, usize){ 1, 0 }, alloc, &blocked, &path_tree)) orelse break;
+        if (node.pos[1] > 0) _ = (try tryToGo(node, node.pos - @Vector(2, usize){ 0, 1 }, alloc, &blocked, &path_tree)) orelse break;
+        if (node.pos[0] <= corner) _ = (try tryToGo(node, node.pos + @Vector(2, usize){ 1, 0 }, alloc, &blocked, &path_tree)) orelse break;
+        if (node.pos[1] <= corner) _ = (try tryToGo(node, node.pos + @Vector(2, usize){ 0, 1 }, alloc, &blocked, &path_tree)) orelse break;
+    }
+}
+
+fn tryToGo(prev: *PathNode, new_pos: @Vector(2, usize), alloc: std.mem.Allocator, blocked: anytype, path_tree: anytype) ?void {
+    const result = try blocked.getOrPut(new_pos);
+    if (result.found_existing) return false;
+
+    const new_node = try alloc.create(PathNode);
+    new_node.* = PathNode{
+        .pos = new_pos,
+        .length = prev.length + 1,
+        .prev = prev,
+    };
+
+    try path_tree.append(alloc, new_node);
+    if (new_pos[0] == corner and new_pos[1] == corner) return null;
+}
+
+const Found = error{Done};
+
+const PathNode = struct {
+    pos: @Vector(2, usize),
+    length: usize = 1,
+    prev: ?*PathNode = null,
+};
