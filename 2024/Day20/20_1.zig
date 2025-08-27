@@ -11,7 +11,7 @@ pub fn main() !void {
     var end = @Vector(2, usize){ 0, 0 };
 
     {
-        const file = try std.fs.cwd().openFile("mini", .{});
+        const file = try std.fs.cwd().openFile("input", .{});
         defer file.close();
         const contents = try file.readToEndAlloc(alloc, 1_000_000);
 
@@ -58,61 +58,37 @@ pub fn main() !void {
 
     //print("End node: {any}ps.\nTime to cheat!\n", .{path.get(end)});
 
-    var cheats = std.AutoHashMap(@Vector(4, usize), u64).init(alloc);
-    defer cheats.deinit();
-    var c_tree: std.ArrayList(Node) = .empty;
-    var c_tree_seen = std.AutoHashMap(@Vector(2, usize), void).init(alloc);
-    defer c_tree.deinit(alloc);
+    var cheats: std.ArrayList(u64) = .empty; // Savings
+    defer cheats.deinit(alloc);
 
     var path_iter = path.iterator();
     while (path_iter.next()) |node| {
-        const t_start = node.value_ptr.*;
-        const pos_start = node.key_ptr.*; //FIXME: The start position is actually the first step into the wall!
-        print("Starting {}\n", .{pos_start});
-        try c_tree.append(alloc, Node{ .pos = pos_start, .len = 1 });
-
-        while (c_tree.pop()) |c_node| {
-            //print("Popped investigating {}\n", .{c_node.pos});
-            if (c_node.len >= 20) continue;
-            for (neighbors(map, c_node.pos)) |n_opt| {
-                if (n_opt) |n| {
-                    if (c_tree_seen.contains(n)) continue;
-                    if (map[n[0]][n[1]] == '#') {
-                        //print("Gonna add neighbor {}\n", .{n});
-                        try c_tree.append(alloc, Node{ .pos = n, .len = c_node.len + 1 });
-                        try c_tree_seen.put(n, {});
-                    } else {
-                        const t_end = path.get(n).?;
-                        if (t_start + c_node.len >= t_end) continue;
-                        const savings = t_end - (t_start + c_node.len);
-                        print("Valid cheat starting {} ending at {} saving {}\n", .{ pos_start, n, savings });
-                        const entry = try cheats.getOrPut(@Vector(4, usize){ pos_start[0], pos_start[1], n[0], n[1] });
-                        if (entry.found_existing) {
-                            if (entry.value_ptr.* < savings) entry.value_ptr.* = savings;
-                        } else {
-                            entry.value_ptr.* = savings;
+        const time_start = node.value_ptr.*;
+        for (neighbors(map, node.key_ptr.*)) |c_1_opt| {
+            if (c_1_opt) |c_1| {
+                if (map[c_1[0]][c_1[1]] != '#') continue;
+                for (neighbors(map, c_1)) |c_2_opt| {
+                    if (c_2_opt) |c_2| {
+                        if (path.get(c_2)) |time_end| {
+                            if (time_end <= time_start + 2) continue;
+                            const savings = time_end - time_start - 2;
+                            //print("Valid cheat saving {} ps: {} -> {} -> {}\n", .{ savings, node.key_ptr.*, c_1, c_2 });
+                            try cheats.append(alloc, savings);
                         }
                     }
                 }
             }
         }
-
-        c_tree_seen.clearRetainingCapacity();
     }
 
+    std.mem.sort(u64, cheats.items, {}, std.sort.desc(u64));
     var total: u64 = 0;
-    var c_iter = cheats.valueIterator();
-    while (c_iter.next()) |val| {
-        if (val.* == 72) total += 1;
+    for (cheats.items) |cheat| {
+        if (cheat >= 100) total += 1;
     }
-
+    //print("All cheats: {any}\n", .{cheats.items});
     print("Total: {}\n", .{total});
 }
-
-const Node = struct {
-    pos: @Vector(2, usize),
-    len: u64,
-};
 
 fn neighbors(map: [][]u8, coords: @Vector(2, usize)) [4]?@Vector(2, usize) {
     const y, const x = coords;
