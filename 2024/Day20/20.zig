@@ -56,76 +56,10 @@ pub fn main() !void {
         }
     }
 
-    //print("End node: {any}ps.\nTime to cheat!\n", .{path.get(end)});
+    print("End node: {any}ps.\nTime to cheat!\n", .{path.get(end)});
 
-    var cheats = std.AutoHashMap(@Vector(4, usize), u64).init(alloc);
-    defer cheats.deinit();
-    var c_tree: std.ArrayList(Node) = .empty;
-    var c_tree_seen = std.AutoHashMap(@Vector(2, usize), u64).init(alloc);
-    defer c_tree.deinit(alloc);
-
-    var path_iter = path.iterator();
-    while (path_iter.next()) |node| {
-        const t_start = node.value_ptr.*;
-        const pos_start = node.key_ptr.*;
-        print("Starting {}\n", .{pos_start});
-
-        for (neighbors(map, pos_start)) |n_opt| {
-            if (n_opt) |n| {
-                if (map[n[0]][n[1]] == '#') {
-                    try c_tree.append(alloc, Node{ .pos = n, .len = 1 });
-                }
-            }
-        }
-
-        while (c_tree.pop()) |c_node| {
-            //print("Popped investigating {}\n", .{c_node.pos});
-            if (c_node.len > 20) continue;
-
-            if (map[c_node.pos[0]][c_node.pos[1]] != '#') {
-                const t_end = path.get(c_node.pos).?;
-                if (t_start + c_node.len >= t_end) continue;
-                const savings = t_end - (t_start + c_node.len);
-                print("Valid cheat starting {} ending at {} saving {}\n", .{ pos_start, c_node.pos, savings });
-                const entry = try cheats.getOrPut(@Vector(4, usize){ pos_start[0], pos_start[1], c_node.pos[0], c_node.pos[1] });
-                if (entry.found_existing) {
-                    //print("It's already there, updating savings\n", .{});
-                    if (entry.value_ptr.* < savings) entry.value_ptr.* = savings;
-                } else {
-                    entry.value_ptr.* = savings;
-                }
-
-                continue;
-            }
-
-            for (neighbors(map, c_node.pos)) |n_opt| {
-                if (n_opt) |n| {
-                    if (c_tree_seen.contains(n)) {
-                        if (c_tree_seen.get(n).? < c_node.len + 1) continue;
-                    }
-                    //print("Gonna add neighbor {}\n", .{n});
-                    try c_tree.append(alloc, Node{ .pos = n, .len = c_node.len + 1 });
-                    try c_tree_seen.put(n, c_node.len + 1);
-                }
-            }
-        }
-
-        c_tree_seen.clearRetainingCapacity();
-    }
-
-    var total: u64 = 0;
-    var c_iter = cheats.valueIterator();
-    while (c_iter.next()) |val| {
-        if (val.* == 72) total += 1;
-    }
-
-    print("Total: {}\n", .{total});
+    // NOTE: JUST FIND ALL POINTS ON PATH WITHIN X+Y <= 20??? CAN WE CHEAT OVERTOP A PATH?
 }
-
-const Node = struct {
-    pos: @Vector(2, usize),
-    len: u64,
-};
 
 fn neighbors(map: [][]u8, coords: @Vector(2, usize)) [4]?@Vector(2, usize) {
     const y, const x = coords;
