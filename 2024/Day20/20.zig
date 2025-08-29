@@ -11,7 +11,7 @@ pub fn main() !void {
     var end = @Vector(2, usize){ 0, 0 };
 
     {
-        const file = try std.fs.cwd().openFile("mini", .{});
+        const file = try std.fs.cwd().openFile("input", .{});
         defer file.close();
         const contents = try file.readToEndAlloc(alloc, 1_000_000);
 
@@ -57,8 +57,54 @@ pub fn main() !void {
     }
 
     print("End node: {any}ps.\nTime to cheat!\n", .{path.get(end)});
+    print("Bounds: 0,0 to {}, {}\n", .{ map.len, map[0].len });
 
     // NOTE: JUST FIND ALL POINTS ON PATH WITHIN X+Y <= 20??? CAN WE CHEAT OVERTOP A PATH?
+    var cheats: std.ArrayList(u64) = .empty;
+    defer cheats.deinit(alloc);
+
+    var path_iter = path.iterator();
+    while (path_iter.next()) |start_entry| {
+        const p_pos = start_entry.key_ptr.*;
+        //print("Starting at {}\n", .{p_pos});
+        const start_time = start_entry.value_ptr.*;
+
+        for (0..41) |y_step| {
+            const y_off = blk: {
+                const tmp: i64 = @intCast(y_step);
+                break :blk tmp - 20;
+            };
+            for (0..41) |x_step| {
+                const x_off = blk: {
+                    const tmp: i64 = @intCast(x_step);
+                    break :blk tmp - 20;
+                };
+
+                if (y_off == 0 and x_off == 0) continue;
+                if (@abs(y_off) + @abs(x_off) > 20) continue;
+
+                if (-y_off > p_pos[0] or y_off > map.len - 1 - p_pos[0]) continue;
+                if (-x_off > p_pos[1] or x_off > map[0].len - 1 - p_pos[1]) continue;
+                //if (x_off < p_pos[1] or x_off > map[0].len - 1 - p_pos[1]) continue;
+                const c_y: usize = @intCast(@as(i64, @intCast(p_pos[0])) + y_off);
+                const c_x: usize = @intCast(@as(i64, @intCast(p_pos[1])) + x_off);
+
+                if (path.get(@Vector(2, usize){ c_y, c_x })) |end_time| {
+                    const cheat_cost: u64 = @abs(x_off) + @abs(y_off);
+                    if (start_time + cheat_cost > end_time) continue;
+                    const savings = end_time - start_time - cheat_cost;
+                    //print("Found cheat! Saving {}\n", .{savings});
+                    try cheats.append(alloc, savings);
+                }
+            }
+        }
+    }
+
+    var total: u64 = 0;
+    for (cheats.items) |cheat| {
+        if (cheat >= 100) total += 1;
+    }
+    print("Total: {}\n", .{total});
 }
 
 fn neighbors(map: [][]u8, coords: @Vector(2, usize)) [4]?@Vector(2, usize) {
