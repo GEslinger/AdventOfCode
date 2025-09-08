@@ -53,86 +53,50 @@ pub fn main() !void {
         }
     }
 
-    //print("Initialized with:\n", .{});
+    print("Initialized with:\n", .{});
     var val_iter = vals.iterator();
-    //while (val_iter.next()) |entry| {
-    //    print("{s}: {any}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
-    //}
-
-    //print("\n", .{});
-    //for (ops.items) |op| print("{s} {any} {s} -> {s}\n", .{ op.a, op.op, op.b, op.c });
-
-    // Sort so the calculation can be done in one pass.
-    {
-        var i: usize = 0;
-        var seen = std.AutoHashMap([3]u8, void).init(alloc);
-
-        val_iter = vals.iterator();
-        while (val_iter.next()) |entry| {
-            if (entry.value_ptr.* != null) try seen.put(entry.key_ptr.*, {});
-        }
-
-        while (i < ops.items.len) {
-            const op = ops.items[i];
-            if (seen.contains(op.a) and seen.contains(op.b)) {
-                //print("{any} is good at idx {}!\n", .{ op, i });
-                try seen.put(op.c, {});
-            } else {
-                //print("{any} not found at idx {}, rotating.\n", .{ op, i });
-                for (i..ops.items.len - 1) |j| {
-                    ops.items[j] = ops.items[j + 1];
-                }
-                ops.items[ops.items.len - 1] = op;
-                continue;
-            }
-
-            i += 1;
-        }
-    }
-
-    // With swapping, we still need to do the done check since the sort is being compromised.
-    var done = false;
-    while (!done) {
-        print("Run.\n", .{});
-        for (ops.items) |op| {
-            if (vals.get(op.a).? == null or vals.get(op.b).? == null) {
-                continue;
-            }
-            const a = vals.get(op.a).?.?;
-            const b = vals.get(op.b).?.?;
-
-            const c_value = vals.getEntry(op.c).?.value_ptr;
-            c_value.* = switch (op.op) {
-                .XOR => a ^ b,
-                .AND => a & b,
-                .OR => a | b,
-            };
-        }
-
-        // Check if all z.. gates are not null
-        var check_done_iter = vals.iterator();
-        done = while (check_done_iter.next()) |entry| {
-            if (entry.key_ptr.*[0] == 'z' and entry.value_ptr.* == null) break false;
-        } else true;
-    }
-
-    val_iter = vals.iterator();
-
-    // Delete all non-z
     while (val_iter.next()) |entry| {
-        if (entry.key_ptr.*[0] != 'z') {
-            if (vals.swapRemove(entry.key_ptr.*)) val_iter = vals.iterator();
-        }
+        print("{s}: {any}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
     }
 
-    // Sort function
-    const C = struct {
-        keys: [][3]u8,
+    print("\n", .{});
+    for (ops.items) |op| print("{s} {any} {s} -> {s}\n", .{ op.a, op.op, op.b, op.c });
 
-        pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
-            const val_a = std.fmt.parseInt(u8, ctx.keys[a_index][1..3], 10) catch 0;
-            const val_b = std.fmt.parseInt(u8, ctx.keys[b_index][1..3], 10) catch 0;
-            return val_a > val_b;
+    for (0..45) |input_bit| {
+        var try_vals = try vals.clone();
+
+        for (0..45) |reset_bit| {
+            var buf: [3]u8 = undefined;
+            var reset = try std.fmt.bufPrint(&buf, "y{d:0>2}", .{reset_bit});
+            if (try_vals.getPtr(buf)) |val_ptr| val_ptr.* = 0;
+            reset = try std.fmt.bufPrint(&buf, "x{d:0>2}", .{reset_bit});
+            if (try_vals.getPtr(buf)) |val_ptr| val_ptr.* = 0;
+        }
+    }
+<<<<<<< HEAD
+
+        _ = input_bit;
+
+        var done = false;
+        while (!done) {
+            for (ops.items) |op| {
+                if (try_vals.get(op.a).? == null or try_vals.get(op.b).? == null) continue;
+                const a = try_vals.get(op.a).?.?;
+                const b = try_vals.get(op.b).?.?;
+
+                const c_value = try_vals.getEntry(op.c).?.value_ptr;
+                c_value.* = switch (op.op) {
+                    .XOR => a ^ b,
+                    .AND => a & b,
+                    .OR => a | b,
+                };
+            }
+
+            // Check if all z.. gates are not null
+            var check_done_iter = try_vals.iterator();
+            done = while (check_done_iter.next()) |entry| {
+                if (entry.key_ptr.*[0] == 'z' and entry.value_ptr.* == null) break false;
+            } else true;
         }
     };
 
@@ -146,10 +110,6 @@ pub fn main() !void {
         num <<= 1;
         num |= entry.value_ptr.*.?;
     }
-
-    print("Final: {}\n", .{num});
-
-    print("{} Operations.\n", .{ops.items.len});
 }
 
 const Operation = struct {
@@ -157,18 +117,6 @@ const Operation = struct {
     b: [3]u8,
     op: Gate,
     c: [3]u8,
-
-    fn lessThan(_: @TypeOf(.{}), lhs: Operation, rhs: Operation) bool {
-        const a_match: bool = for (lhs.a, rhs.c) |a, c| {
-            if (a != c) break false;
-        } else true;
-
-        const b_match: bool = for (lhs.b, rhs.c) |b, c| {
-            if (b != c) break false;
-        } else true;
-
-        return !(a_match or b_match);
-    }
 };
 
 const Gate = enum {
