@@ -53,14 +53,7 @@ pub fn main() !void {
         }
     }
 
-    //print("Initialized with:\n", .{});
     var val_iter = vals.iterator();
-    //while (val_iter.next()) |entry| {
-    //    print("{s}: {any}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
-    //}
-
-    //print("\n", .{});
-    //for (ops.items) |op| print("{s} {any} {s} -> {s}\n", .{ op.a, op.op, op.b, op.c });
 
     // Sort so the calculation can be done in one pass.
     {
@@ -89,6 +82,15 @@ pub fn main() !void {
             i += 1;
         }
     }
+
+    var full_adder: std.ArrayList(Operation) = .empty;
+    full_adder.append(alloc, Operation{ .a = "xin", .b = "yin", .op = Gate.XOR, .c = "haf" }); // Half add
+    full_adder.append(alloc, Operation{ .a = "cin", .b = "haf", .op = Gate.XOR, .c = "zot" }); // Z out
+    full_adder.append(alloc, Operation{ .a = "xin", .b = "yin", .op = Gate.AND, .c = "ca1" }); // Carry 1
+    full_adder.append(alloc, Operation{ .a = "cin", .b = "haf", .op = Gate.AND, .c = "ca2" }); // Carry 2
+    full_adder.append(alloc, Operation{ .a = "ca1", .b = "ca2", .op = Gate.OR, .c = "cot" }); // Carry out
+    // NOTE: Compare structure by cleverly sorting each level of full adder, making sure
+    // gates are connected in the right way
 
     // With swapping, we still need to do the done check since the sort is being compromised.
     var done = false;
