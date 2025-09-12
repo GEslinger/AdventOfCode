@@ -2,8 +2,9 @@ const std = @import("std");
 const print = std.debug.print;
 const max_size = 50_000;
 const Block = struct {
-    size: u8,
+    size: u32,
     id: ?usize = null, // Null for empty block
+    moved: bool = false,
     node: std.DoublyLinkedList.Node = .{},
 };
 
@@ -24,7 +25,7 @@ pub fn main() void {
 
         _ = file_reader.read(&contents) catch return panic("Read file");
 
-        print("{s}\n", .{contents});
+        //print("{s}\n", .{contents});
 
         for (contents, 0..) |char, idx| {
             if (char == '\r' or char == '\n') break;
@@ -64,26 +65,29 @@ pub fn main() void {
     var count: usize = 0;
     defrag: while (reverse_file_iterator.next()) |file_node| {
         const file_block: *Block = @fieldParentPtr("node", file_node);
+        if (file_block.moved) continue;
+        file_block.moved = true;
+
         {
-            print("\nCurrent State:\n", .{});
-            var print_iter = filesystem.first;
-            while (print_iter) |node| : (print_iter = print_iter.?.next) {
-                const print_block: *Block = @fieldParentPtr("node", node);
-                for (0..print_block.size) |_| {
-                    if (print_block.id) |id| {
-                        print("{}", .{id});
-                    } else {
-                        print(".", .{});
-                    }
-                }
-                print("|", .{});
-            }
-            print("\n\n", .{});
-            //if (count > 5) break;
+            //print("\nCurrent State:\n", .{});
+            //var print_iter = filesystem.first;
+            //while (print_iter) |node| : (print_iter = print_iter.?.next) {
+            //    const print_block: *Block = @fieldParentPtr("node", node);
+            //    for (0..print_block.size) |_| {
+            //        if (print_block.id) |id| {
+            //            print("{}", .{id});
+            //        } else {
+            //            print(".", .{});
+            //        }
+            //    }
+            //    print("|", .{});
+            //}
+            //print("\n\n", .{});
+            //if (count >= 0) break;
             count += 1;
         }
 
-        print("Size: {}, ID: {any}\n", .{ file_block.size, file_block.id });
+        //print("Size: {}, ID: {any}\n", .{ file_block.size, file_block.id });
 
         // Moving stuff
         var space_search_node = filesystem.first;
@@ -92,7 +96,7 @@ pub fn main() void {
             const space_block: *Block = @fieldParentPtr("node", space_node);
             if (space_block.id) |_| continue;
 
-            print("Found space {}\n", .{space_block.size});
+            //print("Found space {}\n", .{space_block.size});
 
             if (file_block.size <= space_block.size) {
                 // Make new space
@@ -106,10 +110,10 @@ pub fn main() void {
 
                 // Reduce space (may go to 0!)
                 space_block.size -= file_block.size;
-                print("Inserting with new space {}\n", .{space_block.size});
+                //print("Inserting with new space {}\n", .{space_block.size});
                 break :space;
             } else {
-                print("not enough!\n", .{});
+                //print("not enough!\n", .{});
             }
         }
 
@@ -125,7 +129,7 @@ pub fn main() void {
             if (space_node.next) |next_node| {
                 const next_block: *Block = @fieldParentPtr("node", next_node);
                 if (next_block.id == null) {
-                    print("combining spaces!\n", .{});
+                    //print("combining spaces!\n", .{});
                     space_block.size += next_block.size;
                     filesystem.remove(next_node);
                     continue;
@@ -135,13 +139,39 @@ pub fn main() void {
             defer {
                 if (space_block.size == 0) {
                     filesystem.remove(space_node);
-                    print("Removing 0 space!\n", .{});
+                    //print("Removing 0 space!\n", .{});
                 }
             }
 
             space_search_node = space_node.next;
         }
     }
+
+    var checksum: u128 = 0;
+    var idx: usize = 0;
+    count = 0;
+    print("\nCurrent State:\n", .{});
+    var iter = filesystem.first;
+    while (iter) |node| : (iter = iter.?.next) {
+        const block: *Block = @fieldParentPtr("node", node);
+
+        // Printing
+
+        for (0..block.size) |_| {
+            if (block.id) |id| {
+                if (count <= 20) print("{}-", .{id});
+                checksum += id * idx;
+            } else {
+                if (count <= 20) print(".", .{});
+            }
+            idx += 1;
+        }
+        if (count <= 20) print("|", .{});
+        count += 1;
+    }
+    print("...\n\n", .{});
+
+    print("Checksum: {}\n", .{checksum});
 }
 
 fn panic(msg: []const u8) void {
