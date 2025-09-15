@@ -8,6 +8,8 @@ pub fn main() !void {
 
     var seen_comps: std.ArrayList([2]u8) = .empty;
     defer seen_comps.deinit(alloc);
+    var links: std.ArrayList(Link) = .empty;
+    defer links.deinit(alloc);
 
     {
         var file = try std.fs.cwd().openFile("mini", .{});
@@ -23,18 +25,24 @@ pub fn main() !void {
 
                 if (has(a, seen_comps) == null) try seen_comps.append(alloc, a);
             }
+
+            comp_iter.reset();
+            const link = 
         }
         line_iter.reset();
     }
 
     for (seen_comps.items) |comp| print(" {s}", .{comp});
+    print("\n", .{});
 }
 
 const Link = struct {
     a: *anyopaque,
     b: *anyopaque,
     fn equal(self: Link, other: Link) bool {
-        if (self.a == other.a) return true;
+        if (self.a == other.a and self.b == other.b) return true;
+        if (self.a == other.b and self.b == other.a) return true;
+        return false;
     }
 };
 
