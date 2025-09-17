@@ -42,36 +42,122 @@ pub fn main() !void {
     const alloc = arena.allocator();
 
     var parts: std.ArrayList(PathPart) = .empty;
-    var paths: std.ArrayList(std.ArrayList(u8)) = .empty;
+
+    var input_list: std.ArrayList(std.ArrayList(u8)) = .empty;
+    {
+        var file = try std.fs.cwd().openFile("input", .{});
+        defer file.close();
+
+        const contents = try file.readToEndAlloc(alloc, 1_000_000);
+        var line_iter = std.mem.tokenizeAny(u8, contents, "\r\n");
+        while (line_iter.next()) |line| {
+            var new_list: std.ArrayList(u8) = .empty;
+            try new_list.appendSlice(alloc, line);
+            try input_list.append(alloc, new_list);
+        }
+    }
     //var paths: std.ArrayList(std.ArrayList(u8)) = .empty;
 
     //print("{any}\n", .{paths.items[0].path});
     //
 
     //try pathsAToB(numpad, 'A', '<', &paths, alloc);
+    //
+    var trace_sum: u64 = 0;
+    for (input_list.items) |init_seq| {
 
-    var seq = "029A";
+        //const init_seq = "029A";
+        var seq_list: std.ArrayList(u8) = .empty;
+        try seq_list.appendSlice(alloc, init_seq.items);
 
-    print("\n\n", .{});
-    for (seq[0..(seq.len - 1)], seq[1..], 0..) |from, to, level| {
-        try pathsAToB(numpad, from, to, &parts, alloc, level);
-    }
-    for (parts.items) |part| {
-        print("Level {}: {s}\n", .{ part.level, part.path });
-    }
-    
-    for (parts.items) |*part| {
-        if (part.level == 0) {
-            for (paths.items) |path| {
-                paths.
+        // TODO: Make it run on "Paths" for each iteration and prune all but the shortest ones after each iteration.
+        for (0..3) |recur| {
+            print("Sequence: {s}\n", .{seq_list.items});
+            try seq_list.insert(alloc, 0, 'A');
+            const seq = seq_list.items;
+
+            print("\n\n", .{});
+            for (seq[0..(seq.len - 1)], seq[1..], 0..) |from, to, level| {
+                if (recur == 0) {
+                    try pathsAToB(numpad, from, to, &parts, alloc, level);
+                } else {
+                    try pathsAToB(keypad, from, to, &parts, alloc, level);
+                }
             }
-            var path_begin: std.ArrayList(u8) = .empty;
-            try path_begin.appendSlice(alloc, part.pathSlice());
-            try paths.append(alloc, path_begin);
+
+            var level_index: std.ArrayList(usize) = .empty;
+            var current_level: usize = 99999;
+            for (parts.items, 0..) |part, idx| {
+                //print("Level {}: {s}\n", .{ part.level, part.path });
+                if (part.level != current_level) {
+                    current_level = part.level;
+                    try level_index.append(alloc, idx);
+                }
+            }
+            try level_index.append(alloc, parts.items.len);
+            //print("Level index array: {any}\n", .{level_index.items});
+
+            var paths: std.ArrayList(std.ArrayList(u8)) = .empty;
+            var new_paths: std.ArrayList(std.ArrayList(u8)) = .empty;
+
+            for (0..level_index.items.len - 1) |i| {
+                const from = level_index.items[i];
+                const to = level_index.items[i + 1];
+
+                for (parts.items[from..to]) |*part_at_level| {
+                    if (i == 0) {
+                        var new_list: std.ArrayList(u8) = .empty;
+                        try new_list.appendSlice(alloc, part_at_level.pathSlice());
+                        try new_list.append(alloc, 'A');
+                        try new_paths.append(alloc, new_list);
+                    } else {
+                        for (paths.items) |path| {
+                            var new_list: std.ArrayList(u8) = .empty;
+                            try new_list.appendSlice(alloc, path.items);
+                            try new_list.appendSlice(alloc, part_at_level.pathSlice());
+                            try new_list.append(alloc, 'A');
+                            try new_paths.append(alloc, new_list);
+                        }
+                    }
+                }
+
+                paths.clearRetainingCapacity();
+                paths = try new_paths.clone(alloc);
+                new_paths.clearRetainingCapacity();
+                //for (paths.items) |path| print("{s}\n", .{path.items}) else print("\n", .{});
+            }
+
+            //for (paths.items) |path| print("Potential path:{s}\n", .{path.items});
+
+            seq_list.clearRetainingCapacity();
+            std.mem.sort(std.ArrayList(u8), paths.items, {}, struct {
+                fn lessThan(_: void, a: std.ArrayList(u8), b: std.ArrayList(u8)) bool {
+                    var a_score: usize = 0;
+                    var b_score: usize = 0;
+
+                    for (0..a.items.len - 1) |i| {
+                        if (a.items[i] != a.items[i + 1]) a_score += 1;
+                        if (b.items[i] != b.items[i + 1]) b_score += 1;
+                    }
+
+                    return a_score < b_score;
+                }
+            }.lessThan);
+            seq_list = try paths.items[0].clone(alloc);
+            parts.clearRetainingCapacity();
         }
 
-        current_level = part.level;
+        print("Sequence: {s}\nLen: {}\n", .{ seq_list.items, seq_list.items.len });
+
+        const num_part = try std.fmt.parseInt(u64, init_seq.items[0..3], 10);
+        const trace = seq_list.items.len * num_part;
+
+        print("Numeric part: {}\nTrace:{}\n", .{ num_part, trace });
+
+        trace_sum += trace;
     }
+
+    print("\nTotal trace: {}\n", .{trace_sum});
 }
 
 fn pathsAToB(
@@ -82,7 +168,7 @@ fn pathsAToB(
     alloc: std.mem.Allocator,
     level: usize,
 ) !void {
-    print("trying to find {c} to {c}\n", .{ a, b });
+    //print("trying to find {c} to {c}:{}\n", .{ a, b, b });
     const Point = struct {
         x: usize,
         y: usize,
@@ -125,7 +211,7 @@ fn pathsAToB(
 
         // Return condition
         if (arr[point.y][point.x] == b) {
-            print("FOUND: {c} x: {}, y: {}, path: {s}\n", .{ b, point.x, point.y, point.path });
+            //print("FOUND: {c} x: {}, y: {}, path: {s}\n", .{ b, point.x, point.y, point.path });
             const new_part = PathPart{ .path = point.path, .level = level };
             try parts.append(alloc, new_part);
             best_path_len = len;
