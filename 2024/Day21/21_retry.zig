@@ -13,7 +13,7 @@ const keypad = [2][3]u8{
     [3]u8{ '<', 'v', '>' },
 };
 
-const Key = struct {
+const LevelKey = struct {
     seq: []u8,
     level: usize,
 };
@@ -80,7 +80,12 @@ const L = struct {
     node: std.DoublyLinkedList.Node = .{},
 };
 
-fn pathsAToB(arr: anytype, a: u8, b: u8, alloc: std.mem.Allocator) !std.ArrayList(std.ArrayList(u8)) {
+fn pathsAToB(
+    arr: anytype,
+    a: u8,
+    b: u8,
+    alloc: std.mem.Allocator,
+) !std.ArrayList(std.ArrayList(u8)) {
     list_buffer[0] = start: for (arr, 0..) |row, y| {
         for (row, 0..) |value, x| {
             if (value == a) break :start L{
@@ -128,58 +133,81 @@ fn pathsAToB(arr: anytype, a: u8, b: u8, alloc: std.mem.Allocator) !std.ArrayLis
     return paths;
 }
 
-fn seqLengthMemo(
-    pad: anytype,
-    seq: *std.ArrayList(u8),
-    remaining: usize,
-    alloc: std.mem.Allocator,
-    memo: anytype,
-) usize {
-    const memo_entry = memo.getOrPut(Key{ .seq = seq.items, .level = remaining }) catch unreachable;
-    if (!memo_entry.found_existing) {
-        memo_entry.value_ptr.* = sequenceLength(pad, seq, remaining, alloc, memo) catch unreachable;
-    } else {
-        //print("Found hashed value!\n", .{});
-    }
-
-    return memo_entry.value_ptr.*;
-}
-
 fn sequenceLength(
     pad: anytype,
     seq: *std.ArrayList(u8),
     remaining: usize,
     alloc: std.mem.Allocator,
-    memo: anytype,
+    seq_memo: *SeqMemo,
 ) !usize {
     if (remaining == 0) {
         return seq.items.len;
     }
-
-    //print("Check {s}\n", .{seq.items});
+    //    print("Full contents of memo:\n", .{});
+    //    var memo_iter = memo.iterator();
+    //    while (memo_iter.next()) |entry| {
+    //        print("Len {any}\t[[[ Level: {}\tPath: {s} ]]]\n", .{
+    //            entry.value_ptr.*,
+    //            entry.key_ptr.level,
+    //            entry.key_ptr.seq,
+    //        });
+    //    }
+    //    print("\n", .{});
     try seq.insert(alloc, 0, 'A');
 
+    const key = LevelKey{ .seq = seq.items, .level = remaining };
+    if (seq_memo.get(key)) |memoized_value| {
+        //print("Hash hit on level {} Seq {s}\n", .{ remaining, seq.items });
+        return memoized_value;
+    }
+
+    //print("Check {s}\n", .{seq.items});
+
     var len: usize = 0;
+    //print("{s}\n", .{seq.items});
     for (seq.items[0 .. seq.items.len - 1], seq.items[1..seq.items.len]) |from, to| {
         const paths = try pathsAToB(pad, from, to, alloc);
 
-        var m: usize = std.math.maxInt(usize);
+        var m: ?usize = null;
         for (paths.items) |path| {
+            //print("Calculated {s}\n", .{path.items});
             var new_seq = try path.clone(alloc);
             try new_seq.append(alloc, 'A');
             //print("Consider {s}\n", .{new_seq.items});
-            const path_len = seqLengthMemo(keypad, &new_seq, remaining - 1, alloc, memo);
-            if (path_len < m) m = path_len;
+            const path_len = try sequenceLength(keypad, &new_seq, remaining - 1, alloc, seq_memo);
+            if (path_len <= m orelse path_len) m = path_len;
         }
 
-        len += m;
+        len += m orelse continue;
         //print("Then ", .{});
     }
 
     //print("Level {}, Min length path: {}\n", .{ remaining, len });
 
+    try seq_memo.put(key, len);
     return len;
 }
+
+const LevelKeyCtx = struct {
+    pub fn hash(_: @This(), k: LevelKey) u64 {
+        var hasher = std.hash.Fnv1a_64.init();
+        hasher.update(k.seq[0..]);
+        const level_u8 = [_]u8{@intCast(k.level)};
+        hasher.update(level_u8[0..]);
+        return hasher.final();
+    }
+
+    pub fn eql(_: @This(), a: LevelKey, b: LevelKey) bool {
+        return std.mem.eql(u8, a.seq, b.seq) and a.level == b.level;
+    }
+};
+
+const SeqMemo = std.HashMap(
+    LevelKey,
+    usize,
+    LevelKeyCtx,
+    std.hash_map.default_max_load_percentage,
+);
 
 pub fn main() !void {
     print("Hello, world!\n", .{});
@@ -188,27 +216,33 @@ pub fn main() !void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const KeyCtx = struct {
-        pub fn hash(_: @This(), k: Key) u64 {
-            var hasher = std.hash.Fnv1a_64.init();
-            hasher.update(k.seq);
-            const level_u8 = [_]u8{@intCast(k.level)};
-            hasher.update(level_u8[0..]);
-            return hasher.final();
+    var input_list: std.ArrayList(std.ArrayList(u8)) = .empty;
+    {
+        var file = try std.fs.cwd().openFile("input", .{});
+        defer file.close();
+
+        const contents = try file.readToEndAlloc(alloc, 1_000_000);
+        var line_iter = std.mem.tokenizeAny(u8, contents, "\r\n");
+        while (line_iter.next()) |line| {
+            var new_list: std.ArrayList(u8) = .empty;
+            try new_list.appendSlice(alloc, line);
+            try input_list.append(alloc, new_list);
         }
+    }
 
-        pub fn eql(_: @This(), a: Key, b: Key) bool {
-            return std.mem.eql(u8, a.seq, b.seq) and a.level == b.level;
-        }
-    };
+    var seq_memo = SeqMemo.init(alloc);
+    defer seq_memo.deinit();
 
-    var memo = std.HashMap(Key, usize, KeyCtx, std.hash_map.default_max_load_percentage).init(alloc);
-    defer memo.deinit();
+    var total: u64 = 0;
+    for (input_list.items) |*seq| {
+        print("Seq: {s}\n", .{seq.items});
+        const num_part = try std.fmt.parseInt(u64, seq.items[0..3], 10);
+        const shortest = try sequenceLength(numpad, seq, 26, alloc, &seq_memo);
+        const trace = shortest * num_part;
 
-    var seq = "029A";
-    var seq_arr: std.ArrayList(u8) = .empty;
-    try seq_arr.appendSlice(alloc, seq[0..]);
-    const shortest = seqLengthMemo(numpad, &seq_arr, 10, alloc, &memo);
+        print("Numeric: {}\nShortest: {}\nTrace: {}\n\n", .{ num_part, shortest, trace });
+        total += trace;
+    }
 
-    print("Shortest: {}\n", .{shortest});
+    print("Total: {}\n", .{total});
 }
