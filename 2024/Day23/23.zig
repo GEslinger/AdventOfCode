@@ -12,7 +12,7 @@ pub fn main() !void {
     defer links.deinit(alloc);
 
     {
-        var file = try std.fs.cwd().openFile("mini", .{});
+        var file = try std.fs.cwd().openFile("input", .{});
         defer file.close();
         const contents = try file.readToEndAlloc(alloc, 1_000_000);
 
@@ -27,22 +27,52 @@ pub fn main() !void {
             }
 
             comp_iter.reset();
-            const link = 
+            var link: Link = undefined;
+            link.a = seen_comps.items[has(comp_iter.next().?, seen_comps).?];
+            link.b = seen_comps.items[has(comp_iter.next().?, seen_comps).?];
+            try links.append(alloc, link);
         }
-        line_iter.reset();
     }
 
-    for (seen_comps.items) |comp| print(" {s}", .{comp});
-    print("\n", .{});
+    print("Total links: {}\nTotal computers: {}\n", .{ links.items.len, seen_comps.items.len });
+
+    var total: u64 = 0;
+    for (links.items[0..], 0..) |link1, a| {
+        for (links.items[0..a], 0..) |link2, b| {
+            const others = link1.otherLinkEnds(link2) orelse continue;
+            for (links.items[0..b], 0..) |link3, c| {
+                _ = c;
+                if (!link3.equal(others)) continue;
+                if (link1.a[0] == 't' or link1.b[0] == 't' or
+                    link2.a[0] == 't' or link2.b[0] == 't' or
+                    link3.a[0] == 't' or link3.b[0] == 't')
+                {
+                    total += 1;
+                }
+            }
+        }
+    }
+
+    print("Total: {}\n", .{total});
 }
 
 const Link = struct {
-    a: *anyopaque,
-    b: *anyopaque,
+    a: [2]u8,
+    b: [2]u8,
     fn equal(self: Link, other: Link) bool {
-        if (self.a == other.a and self.b == other.b) return true;
-        if (self.a == other.b and self.b == other.a) return true;
-        return false;
+        return ((std.mem.eql(u8, &self.a, &other.a) and std.mem.eql(u8, &self.b, &other.b)) or
+            (std.mem.eql(u8, &self.a, &other.b) and std.mem.eql(u8, &self.b, &other.a)));
+    }
+
+    fn otherLinkEnds(self: Link, other: Link) ?Link {
+        //if (equal(self, other)) return null;
+
+        if (std.mem.eql(u8, &self.a, &other.a)) return Link{ .a = self.b, .b = other.b };
+        if (std.mem.eql(u8, &self.b, &other.a)) return Link{ .a = self.a, .b = other.b };
+        if (std.mem.eql(u8, &self.a, &other.b)) return Link{ .a = self.b, .b = other.a };
+        if (std.mem.eql(u8, &self.b, &other.b)) return Link{ .a = self.a, .b = other.a };
+
+        return null;
     }
 };
 

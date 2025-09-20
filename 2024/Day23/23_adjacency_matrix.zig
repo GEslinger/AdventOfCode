@@ -9,10 +9,10 @@ pub fn main() !void {
     var seen_comps: std.ArrayList([2]u8) = .empty;
     defer seen_comps.deinit(alloc);
 
-    var adjacency: [][]D = undefined;
+    var adjacency: [][]u64 = undefined;
 
     {
-        var file = try std.fs.cwd().openFile("mini", .{});
+        var file = try std.fs.cwd().openFile("input", .{});
         defer file.close();
         const contents = try file.readToEndAlloc(alloc, 1_000_000);
 
@@ -30,11 +30,11 @@ pub fn main() !void {
 
         // Construct adjacency matrix
         const uniques = seen_comps.items.len;
-        adjacency = try alloc.alloc([]D, uniques);
+        adjacency = try alloc.alloc([]u64, uniques);
         for (0..uniques) |i| {
-            adjacency[i] = try alloc.alloc(D, uniques);
+            adjacency[i] = try alloc.alloc(u64, uniques);
             for (0..uniques) |j| {
-                adjacency[i][j] = D{ .num = 0, .t_count = 0 };
+                adjacency[i][j] = 0;
             }
         }
 
@@ -47,74 +47,117 @@ pub fn main() !void {
             const a = has(a_id, seen_comps).?;
             const b = has(b_id, seen_comps).?;
 
-            adjacency[a][b].num += 1;
-            adjacency[b][a].num += 1;
-            if (a_id[0] == 't' or b_id[0] == 't') {
-                adjacency[a][b].t_count += 1;
-                adjacency[b][a].t_count += 1;
-            }
+            adjacency[a][b] += 1;
+            adjacency[b][a] += 1;
         }
     }
 
-    for (seen_comps.items) |comp| print(" {s}", .{comp});
+    //for (seen_comps.items) |comp| print("{s} ", .{comp});
     print("\n", .{});
-    print_2d(adjacency);
+    //print_2d(adjacency);
     print("\n", .{});
 
-    // Matrices for storing intermediate values
-    var result: [][]D = try alloc.alloc([]D, adjacency.len);
-    var inter: [][]D = try alloc.alloc([]D, adjacency.len);
-    for (adjacency, 0..) |_, i| {
-        result[i] = try alloc.alloc(D, adjacency[i].len);
-        inter[i] = try alloc.alloc(D, adjacency[i].len);
-        @memcpy(result[i], adjacency[i]);
-        //@memcpy(inter[i], adjacency[i]);
-    }
+    //var clique_index: std.ArrayList(usize) = .empty;
+    //defer clique_index.deinit(alloc);
 
-    // WARN: MATRIX MULTIPLICATION
+    const L = struct {
+        val: u64,
+        exclude: bool = false,
+        //node: std.DoublyLinkedList.Node = .{},
+    };
+    //var clique_buf: [100]L = undefined;
+    var clique_index: std.ArrayList(L) = .empty;
+    defer clique_index.deinit(alloc);
 
-    const col = try alloc.alloc(D, adjacency.len);
-    for (0..2) |_| {
-        for (result, 0..) |row, i| {
-            for (row, 0..) |_, j| {
-                get_col(adjacency, j, col);
-                var total = D{};
-                for (row, col, 0..) |a, b, n| {
-                    _ = n;
-                    //print("This one: {}", .{seen_comps.items[n]});
-                    //print("i: {}, j: {}, a: {}, b:{}\n", .{ i, j, a, b });
-                    //total.t_count += a.t_count + b.t_count;
-                    total.num += a.num * b.num;
+    var try_clique: std.ArrayList([2]u8) = .empty;
+    defer try_clique.deinit(alloc);
+    var longest_clique: std.ArrayList([2]u8) = .empty;
+    defer longest_clique.deinit(alloc);
+
+    var max_excluded: u64 = 99;
+
+    root: for (adjacency, 0..) |row, i| {
+        try_clique.clearRetainingCapacity();
+        clique_index.clearRetainingCapacity();
+        //var clique_index: std.DoublyLinkedList = .{};
+        //var buf_index: usize = 0;
+        var edges: u64 = 0;
+        for (row, 0..) |val, j| {
+            if (val == 1) {
+                //clique_buf[buf_index] = L{ .val = j };
+                //clique_index.append(&clique_buf[buf_index].node);
+                //buf_index += 1;
+                try clique_index.append(alloc, L{ .val = j });
+                edges += 1;
+            }
+        }
+
+        var excluded: u64 = 0;
+        //print("Root {s}\n", .{seen_comps.items[i]});
+        //print("Edges {}\n", .{edges});
+        //print("Max exclusions: {}\n", .{max_excluded});
+        member: for (clique_index.items) |*clique_member| {
+            if (clique_member.exclude) continue;
+
+            //print("\tMember {s}\n", .{seen_comps.items[clique_member.val]});
+            for (clique_index.items) |*check_member| {
+                if (clique_member.val == check_member.val or
+                    clique_member.val == i or
+                    check_member.val == i) continue;
+                if (check_member.exclude) continue;
+
+                if (adjacency[clique_member.val][check_member.val] != 1) {
+                    //print("\t\tExclude!\n", .{});
+                    clique_member.exclude = true;
+                    excluded += 1;
+                    //continue :member;
+                    if (excluded > max_excluded) continue :root;
+                    continue :member;
                 }
-
-                inter[i][j] = total;
             }
+            continue :member;
+        }
+        if (excluded < max_excluded) max_excluded = excluded;
+
+        try try_clique.append(alloc, seen_comps.items[i]);
+        for (clique_index.items) |final_member| {
+            if (final_member.exclude) continue;
+            //print("{s},", .{seen_comps.items[final_member.val]});
+            try try_clique.append(alloc, seen_comps.items[final_member.val]);
         }
 
-        // Deep copy
-        for (inter, 0..) |_, i| {
-            @memcpy(result[i], inter[i]);
+        if (try_clique.items.len >= longest_clique.items.len) {
+            print("\nNew longest! {}\n", .{try_clique.items.len});
+            longest_clique.clearAndFree(alloc);
+            longest_clique = try try_clique.clone(alloc);
+            std.mem.sort([2]u8, longest_clique.items, {}, struct {
+                fn lessThan(_: void, a: [2]u8, b: [2]u8) bool {
+                    //print("Comparing {s} and {s}\n", .{ a, b });
+                    if (a[0] < b[0]) return true;
+                    if (a[0] == b[0] and a[1] < b[1]) return true;
+                    return false;
+                }
+            }.lessThan);
+
+            for (longest_clique.items) |clique| print("{s},", .{clique});
+            print("\n", .{});
         }
-        print_2d(result);
-        print("\n", .{});
+        //print("\nTotal len: {}\n\n", .{size});
+
     }
 
-    // Getting "trace"
-    var trace: i64 = 0;
-    for (result, 0..) |_, i| {
-        if (seen_comps.items[i][0] == 't') {
-            trace += result[i][i].num;
-        }
-    }
-
-    print("Trace: {}\n", .{trace});
-    print("Answer: {}\n", .{@divTrunc(trace, 2)});
+    for (longest_clique.items) |clique| print("{s},", .{clique});
+    print("\n", .{});
 }
 
-const D = struct {
-    num: i64 = 0,
-    t_count: i64 = 0,
-};
+//std.mem.sort([2]u8, longest_clique.items, {}, struct {
+//    fn lessThan(_: void, a: [2]u8, b: [2]u8) bool {
+//        //print("Comparing {s} and {s}\n", .{ a, b });
+//        if (a[0] < b[0]) return true;
+//        if (a[0] == b[0] and a[1] < b[1]) return true;
+//        return false;
+//    }
+//}.lessThan);
 
 fn get_col(two_d: anytype, idx: usize, col: anytype) void {
     for (two_d, 0..) |row, j| {
@@ -125,7 +168,7 @@ fn get_col(two_d: anytype, idx: usize, col: anytype) void {
 fn print_2d(two_d: anytype) void {
     for (two_d) |one_d| {
         for (one_d) |value| {
-            print("{} ", .{value.num});
+            print("{}  ", .{value});
             //print("{}, ", .{value.num});
         }
         print("\n", .{});
